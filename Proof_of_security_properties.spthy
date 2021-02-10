@@ -1,0 +1,1278 @@
+theory PUF_protocol begin
+
+// Function signature and definition of the equational theory E
+
+functions: SKG/2, break1/1, break2/1, fst/1, fuzzyhd/1, fuzzyk/1, h/1,
+           mac/2, pair/2, puf/1 [private], rep/2, sdec/2, senc/2, snd/1, true/0,
+           vermac/3
+equations:
+    fst(<x.1, x.2>) = x.1,
+    rep(puf(x.1), fuzzyhd(puf(x.2))) = fuzzyk(puf(x.2)),
+    sdec(senc(x.1, x.2), x.2) = x.1,
+    snd(<x.1, x.2>) = x.2,
+    vermac(x.1, x.2, mac(x.1, x.2)) = true
+
+
+
+rule (modulo E) Enrollment:
+   [ Fr( ~K_R1 ), Fr( ~A_ID ), Fr( ~C_2 ), Fr( ~C_2old ) ]
+  --[
+  Once( ), Secure( ~C_2 ), Secure( puf(~C_2old) ), Secure( ~K_R1 ),
+  Secure( ~A_ID )
+  ]->
+   [
+   A0( $A, $B, <~K_R1, ~A_ID> ),
+   B0( $B, $A, <~K_R1, ~A_ID, ~C_2, puf(~C_2old)> )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Init_A:
+   [ Fr( ~id ), Fr( ~r_A ), A0( A, B, <K_R1, A_ID> ) ]
+  --[ Initialise( A, ~id ), Role( 'A' ) ]->
+   [ A1( A, B, <K_R1, A_ID, ~r_A> ), !KeyA( A, K_R1 ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Init_B:
+   [ Fr( ~id ), Fr( ~r_B ), B0( B, A, <K_R1, A_ID, C_2, R_2> ) ]
+  --[ Initialise( B, ~id ), Role( 'B' ) ]->
+   [ B1( B, A, <K_R1, A_ID, C_2, R_2, ~r_B> ), !KeyB( B, <K_R1, R_2> ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Compromise_Alice:
+   [ !KeyA( A, K_R1 ) ] --[ CompromiseA( A ) ]-> [ Out( K_R1 ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Compromise_Bob:
+   [ !KeyB( B, <K_R1, R_2> ) ]
+  --[ CompromiseB( B ) ]->
+   [ Out( <K_R1, R_2> ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Alice_sends1:
+   [ A1( A, B, <K_R1, A_ID, r_A> ), Fr( ~N_1 ) ]
+  --[ A1_OUT( <A_ID, ~N_1> ), Role( 'A' ) ]->
+   [
+   Out( <A_ID, ~N_1> ), A2( A, B, <~N_1, break1(K_R1), break2(K_R1), r_A> )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Bob_receives_sends1:
+   [ B1( B, A, <K_R1, A_ID, C_2, R_2, r_B> ), In( <A_ID, N_1> ), Fr( ~N_B )
+   ]
+  --[
+  SendB( B, senc(<B, C_2, ~N_B, N_1>, break1(K_R1)) ),
+  B1_IN( N_1, <A_ID, N_1> ),
+  B1_OUT( senc(<B, C_2, ~N_B, N_1>, break1(K_R1)) ), Genuine( A ),
+  Genuine( B ), Role( 'B' ), Involved( B, A, 'init' )
+  ]->
+   [
+   Out( <senc(<B, C_2, ~N_B, N_1>, break1(K_R1)),
+         mac(break2(K_R1), senc(<B, C_2, ~N_B, N_1>, break1(K_R1)))>
+   ),
+   B2( B, A, <~N_B, C_2, R_2, break1(K_R1), r_B> )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Alice_receives_sends2:
+   [
+   A2( A, B, <N_1, K_R11, K_R12, r_A> ),
+   In( <senc(<B, C_2, N_B, N_1>, K_R11), sig> ), Fr( ~N_A ), Fr( ~s_A ),
+   Fr( ~Random_variable )
+   ]
+  --[
+  ReceiveA( A, senc(<B, C_2, N_B, N_1>, K_R11) ),
+  A1_IN( N_B, senc(<B, C_2, N_B, N_1>, K_R11) ),
+  SendA( A,
+         senc(<A, ~s_A, ~N_A, puf(h(<C_2, ~N_A>)), puf(h(<h(<C_2, ~N_A>), N_B>))>,
+              break1(fuzzyk(puf(C_2))))
+  ),
+  A2_OUT( senc(<A, ~s_A, ~N_A, puf(h(<C_2, ~N_A>)),
+                puf(h(<h(<C_2, ~N_A>), N_B>))>,
+               break1(fuzzyk(puf(C_2))))
+  ),
+  Secret( h(r_A) ), Genuine( A ), Genuine( B ), Commit( A, B, 'init' ),
+  Role( 'A' ), Involved( A, B, 'resp' ),
+  Eq( vermac(K_R12, senc(<B, C_2, N_B, N_1>, K_R11), sig), true ),
+  AuthenticB( B, senc(<B, C_2, N_B, N_1>, K_R11) )
+  ]->
+   [
+   Out( <
+         senc(<A, ~s_A, ~N_A, puf(h(<C_2, ~N_A>)), puf(h(<h(<C_2, ~N_A>), N_B>))>,
+              break1(fuzzyk(puf(C_2)))),
+         mac(break2(fuzzyk(puf(C_2))),
+             senc(<A, ~s_A, ~N_A, puf(h(<C_2, ~N_A>)), puf(h(<h(<C_2, ~N_A>), N_B>))>,
+                  break1(fuzzyk(puf(C_2))))),
+         fuzzyhd(puf(C_2))>
+   ),
+   A3( A, h(r_A) )
+   ]
+
+  /*
+  rule (modulo AC) Alice_receives_sends2:
+     [
+     A2( A, B, <N_1, K_R11, K_R12, r_A> ),
+     In( <senc(<B, C_2, N_B, N_1>, K_R11), sig> ), Fr( ~N_A ), Fr( ~s_A ),
+     Fr( ~Random_variable )
+     ]
+    --[
+    ReceiveA( A, senc(<B, C_2, N_B, N_1>, K_R11) ),
+    A1_IN( N_B, senc(<B, C_2, N_B, N_1>, K_R11) ),
+    SendA( A,
+           senc(<A, ~s_A, ~N_A, puf(h(<C_2, ~N_A>)), puf(h(<h(<C_2, ~N_A>), N_B>))>,
+                break1(fuzzyk(puf(C_2))))
+    ),
+    A2_OUT( senc(<A, ~s_A, ~N_A, puf(h(<C_2, ~N_A>)),
+                  puf(h(<h(<C_2, ~N_A>), N_B>))>,
+                 break1(fuzzyk(puf(C_2))))
+    ),
+    Secret( h(r_A) ), Genuine( A ), Genuine( B ), Commit( A, B, 'init' ),
+    Role( 'A' ), Involved( A, B, 'resp' ), Eq( z, true ),
+    AuthenticB( B, senc(<B, C_2, N_B, N_1>, K_R11) )
+    ]->
+     [
+     Out( <
+           senc(<A, ~s_A, ~N_A, puf(h(<C_2, ~N_A>)), puf(h(<h(<C_2, ~N_A>), N_B>))>,
+                break1(fuzzyk(puf(C_2)))),
+           mac(break2(fuzzyk(puf(C_2))),
+               senc(<A, ~s_A, ~N_A, puf(h(<C_2, ~N_A>)), puf(h(<h(<C_2, ~N_A>), N_B>))>,
+                    break1(fuzzyk(puf(C_2))))),
+           fuzzyhd(puf(C_2))>
+     ),
+     A3( A, h(r_A) )
+     ]
+    variants (modulo AC)
+    1. B     = B.23
+       C_2   = C_2.24
+       K_R11 = K_R11.25
+       K_R12 = K_R12.26
+       N_1   = N_1.27
+       N_B   = N_B.28
+       sig   = mac(K_R12.26, senc(<B.23, C_2.24, N_B.28, N_1.27>, K_R11.25))
+       z     = true
+
+    2. B     = B.25
+       C_2   = C_2.26
+       K_R11 = K_R11.27
+       K_R12 = K_R12.28
+       N_1   = N_1.29
+       N_B   = N_B.30
+       sig   = sig.32
+       z     = vermac(K_R12.28, senc(<B.25, C_2.26, N_B.30, N_1.29>, K_R11.27),
+                      sig.32)
+  */
+
+rule (modulo E) Bob_receives2:
+   [
+   B2( B, A, <N_B, C_2, R_2, K_R11, r_B> ),
+   In( <senc(<A, s_A, N_A, R_3, R_4>, break1(rep(R_2, hd_2e))), sigm_A,
+        hd_2e>
+   )
+   ]
+  --[
+  B2_IN( N_A, senc(<A, s_A, N_A, R_3, R_4>, break1(rep(R_2, hd_2e))) ),
+  ReceiveB( B, senc(<A, s_A, N_A, R_3, R_4>, break1(rep(R_2, hd_2e))) ),
+  Secret( h(SKG(s_A, r_B)) ), Genuine( B ), Genuine( A ), Role( 'B' ),
+  Eq( vermac(break2(rep(R_2, hd_2e)),
+             senc(<A, s_A, N_A, R_3, R_4>, break1(rep(R_2, hd_2e))), sigm_A),
+      true
+  ),
+  Commit( B, A, 'resp' ),
+  AuthenticA( A, senc(<A, s_A, N_A, R_3, R_4>, break1(rep(R_2, hd_2e))) )
+  ]->
+   [ B3( B, h(SKG(s_A, r_B)) ) ]
+
+  /*
+  rule (modulo AC) Bob_receives2:
+     [
+     B2( B, A, <N_B, C_2, R_2, K_R11, r_B> ),
+     In( <senc(<A, s_A, N_A, R_3, R_4>, break1(z)), sigm_A, hd_2e> )
+     ]
+    --[
+    B2_IN( N_A, senc(<A, s_A, N_A, R_3, R_4>, break1(z)) ),
+    ReceiveB( B, senc(<A, s_A, N_A, R_3, R_4>, break1(z)) ),
+    Secret( h(SKG(s_A, r_B)) ), Genuine( B ), Genuine( A ), Role( 'B' ),
+    Eq( z.1, true ), Commit( B, A, 'resp' ),
+    AuthenticA( A, senc(<A, s_A, N_A, R_3, R_4>, break1(z)) )
+    ]->
+     [ B3( B, h(SKG(s_A, r_B)) ) ]
+    variants (modulo AC)
+    1. A     = A.29
+       N_A   = N_A.33
+       R_2   = R_2.35
+       R_3   = R_3.36
+       R_4   = R_4.37
+       hd_2e = hd_2e.38
+       s_A   = s_A.40
+       sigm_A
+             = mac(break2(rep(R_2.35, hd_2e.38)),
+                   senc(<A.29, s_A.40, N_A.33, R_3.36, R_4.37>,
+                        break1(rep(R_2.35, hd_2e.38))))
+       z     = rep(R_2.35, hd_2e.38)
+       z.1   = true
+
+    2. A     = A.30
+       N_A   = N_A.34
+       R_2   = R_2.36
+       R_3   = R_3.37
+       R_4   = R_4.38
+       hd_2e = hd_2e.39
+       s_A   = s_A.41
+       sigm_A
+             = sigm_A.42
+       z     = rep(R_2.36, hd_2e.39)
+       z.1   = vermac(break2(rep(R_2.36, hd_2e.39)),
+                      senc(<A.30, s_A.41, N_A.34, R_3.37, R_4.38>,
+                           break1(rep(R_2.36, hd_2e.39))),
+                      sigm_A.42)
+
+    3. A     = A.38
+       N_A   = N_A.42
+       R_2   = puf(x.71)
+       R_3   = R_3.45
+       R_4   = R_4.46
+       hd_2e = fuzzyhd(puf(x.74))
+       s_A   = s_A.49
+       sigm_A
+             = sigm_A.50
+       z     = fuzzyk(puf(x.74))
+       z.1   = vermac(break2(fuzzyk(puf(x.74))),
+                      senc(<A.38, s_A.49, N_A.42, R_3.45, R_4.46>, break1(fuzzyk(puf(x.74)))),
+                      sigm_A.50)
+
+    4. A     = A.44
+       N_A   = N_A.48
+       R_2   = puf(x.83)
+       R_3   = R_3.51
+       R_4   = R_4.52
+       hd_2e = fuzzyhd(puf(x.86))
+       s_A   = s_A.55
+       sigm_A
+             = mac(break2(fuzzyk(puf(x.86))),
+                   senc(<A.44, s_A.55, N_A.48, R_3.51, R_4.52>, break1(fuzzyk(puf(x.86)))))
+       z     = fuzzyk(puf(x.86))
+       z.1   = true
+  */
+
+restriction Equality:
+  "∀ x y #i. (Eq( x, y ) @ #i) ⇒ (x = y)"
+  // safety formula
+
+restriction Enrollment_is_performed_once:
+  "∀ #i #j. ((Once( ) @ #i) ∧ (Once( ) @ #j)) ⇒ (#i = #j)"
+  // safety formula
+
+restriction Enrollment_is_secure:
+  "¬(∃ m #i #j. (Secure( m ) @ #i) ∧ (K( m ) @ #j))"
+  // safety formula
+
+lemma aliveness:
+  all-traces
+  "∀ a b t #i.
+    (Commit( a, b, t ) @ #i) ⇒
+    ((∃ id #j. Initialise( b, id ) @ #j) ∨
+     (∃ C #r1. (CompromiseA( C ) @ #r1) ∧ (Genuine( C ) @ #i)))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ a b t #i.
+  (Commit( a, b, t ) @ #i)
+ ∧
+  (∀ id #j. (Initialise( b, id ) @ #j) ⇒ ⊥) ∧
+  (∀ C #r1. (CompromiseA( C ) @ #r1) ∧ (Genuine( C ) @ #i) ⇒ ⊥)"
+*/
+simplify
+solve( Commit( a, b, t ) @ #i )
+  case Alice_receives_sends2
+  solve( A2( a, b, <N_1, K_R11, K_R12, r_A> ) ▶₀ #i )
+    case Alice_sends1
+    solve( !KU( senc(<$B, C_2, N_B, ~N_1>, break1(~K_R1)) ) @ #vk.1 )
+      case Bob_receives_sends1
+      by contradiction /* from formulas */
+    next
+      case c_senc
+      solve( !KU( break1(~K_R1) ) @ #vk.4 )
+        case c_break1
+        solve( !KU( ~K_R1 ) @ #vk.11 )
+          case Compromise_Alice
+          by contradiction /* from formulas */
+        next
+          case Compromise_Bob
+          by contradiction /* from formulas */
+        qed
+      qed
+    qed
+  qed
+next
+  case Bob_receives2
+  solve( B2( a, b, <N_B, C_2, R_2, K_R11, r_B> ) ▶₀ #i )
+    case Bob_receives_sends1
+    solve( !KU( ~A_ID ) @ #vk.6 )
+      case Alice_sends1
+      by contradiction /* from formulas */
+    qed
+  qed
+qed
+
+lemma weak_agreement:
+  all-traces
+  "∀ a b t1 #i.
+    (Commit( a, b, t1 ) @ #i) ⇒
+    (((∃ t2 #j. Involved( b, a, t2 ) @ #j) ∨
+      (∃ C #r. (CompromiseB( C ) @ #r) ∧ (Genuine( C ) @ #i))) ∨
+     (∃ C #r1. (CompromiseA( C ) @ #r1) ∧ (Genuine( C ) @ #i)))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ a b t1 #i.
+  (Commit( a, b, t1 ) @ #i)
+ ∧
+  (∀ t2 #j. (Involved( b, a, t2 ) @ #j) ⇒ ⊥) ∧
+  (∀ C #r. (CompromiseB( C ) @ #r) ∧ (Genuine( C ) @ #i) ⇒ ⊥) ∧
+  (∀ C #r1. (CompromiseA( C ) @ #r1) ∧ (Genuine( C ) @ #i) ⇒ ⊥)"
+*/
+simplify
+solve( Commit( a, b, t1 ) @ #i )
+  case Alice_receives_sends2
+  solve( A2( a, b, <N_1, K_R11, K_R12, r_A> ) ▶₀ #i )
+    case Alice_sends1
+    solve( !KU( senc(<$B, C_2, N_B, ~N_1>, break1(~K_R1)) ) @ #vk.1 )
+      case Bob_receives_sends1
+      by contradiction /* from formulas */
+    next
+      case c_senc
+      solve( !KU( break1(~K_R1) ) @ #vk.4 )
+        case c_break1
+        solve( !KU( ~K_R1 ) @ #vk.11 )
+          case Compromise_Alice
+          by contradiction /* from formulas */
+        next
+          case Compromise_Bob
+          by contradiction /* from formulas */
+        qed
+      qed
+    qed
+  qed
+next
+  case Bob_receives2
+  solve( B2( a, b, <N_B, C_2, R_2, K_R11, r_B> ) ▶₀ #i )
+    case Bob_receives_sends1
+    solve( !KU( ~A_ID ) @ #vk.6 )
+      case Alice_sends1
+      solve( splitEqs(0) )
+        case split_case_1
+        solve( !KU( senc(<$A, s_A, N_A, R_3, R_4>,
+                         break1(rep(puf(~C_2old), hd_2e)))
+               ) @ #vk.3 )
+          case c_senc
+          solve( !KU( break1(rep(puf(~C_2old), hd_2e)) ) @ #vk.9 )
+            case c_break1
+            solve( !KU( rep(puf(~C_2old), hd_2e) ) @ #vk.18 )
+              case c_rep
+              solve( !KU( puf(~C_2old) ) @ #vk.19 )
+                case Compromise_Bob
+                by contradiction /* from formulas */
+              qed
+            qed
+          qed
+        qed
+      next
+        case split_case_2
+        solve( !KU( senc(<$A, s_A, N_A, R_3, R_4>, break1(fuzzyk(puf(x))))
+               ) @ #vk.3 )
+          case Alice_receives_sends2
+          by contradiction /* from formulas */
+        next
+          case c_senc
+          solve( !KU( break1(fuzzyk(puf(x))) ) @ #vk.9 )
+            case c_break1
+            solve( !KU( mac(break2(fuzzyk(puf(x))),
+                            senc(<$A, s_A, N_A, R_3, R_4>, break1(fuzzyk(puf(x)))))
+                   ) @ #vk.6 )
+              case Alice_receives_sends2
+              by contradiction /* from formulas */
+            next
+              case c_mac
+              solve( !KU( break2(fuzzyk(puf(x))) ) @ #vk.19 )
+                case c_break2
+                solve( !KU( fuzzyhd(puf(x)) ) @ #vk.8 )
+                  case Alice_receives_sends2
+                  by contradiction /* from formulas */
+                next
+                  case c_fuzzyhd
+                  solve( !KU( puf(x) ) @ #vk.20 )
+                    case Alice_receives_sends2_case_1
+                    by contradiction /* from formulas */
+                  next
+                    case Alice_receives_sends2_case_2
+                    by contradiction /* from formulas */
+                  next
+                    case Compromise_Bob
+                    by contradiction /* from formulas */
+                  qed
+                qed
+              qed
+            qed
+          qed
+        qed
+      qed
+    qed
+  qed
+qed
+
+lemma noninjective_agreement:
+  all-traces
+  "∀ a b t #i.
+    (Commit( a, b, t ) @ #i) ⇒
+    (((∃ #j. Involved( b, a, t ) @ #j) ∨
+      (∃ C #r. (CompromiseB( C ) @ #r) ∧ (Genuine( C ) @ #i))) ∨
+     (∃ C #r. (CompromiseA( C ) @ #r) ∧ (Genuine( C ) @ #i)))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ a b t #i.
+  (Commit( a, b, t ) @ #i)
+ ∧
+  (∀ #j. (Involved( b, a, t ) @ #j) ⇒ ⊥) ∧
+  (∀ C #r. (CompromiseB( C ) @ #r) ∧ (Genuine( C ) @ #i) ⇒ ⊥) ∧
+  (∀ C #r. (CompromiseA( C ) @ #r) ∧ (Genuine( C ) @ #i) ⇒ ⊥)"
+*/
+simplify
+solve( Commit( a, b, t ) @ #i )
+  case Alice_receives_sends2
+  solve( A2( a, b, <N_1, K_R11, K_R12, r_A> ) ▶₀ #i )
+    case Alice_sends1
+    solve( !KU( senc(<$B, C_2, N_B, ~N_1>, break1(~K_R1)) ) @ #vk.1 )
+      case Bob_receives_sends1
+      by contradiction /* from formulas */
+    next
+      case c_senc
+      solve( !KU( break1(~K_R1) ) @ #vk.4 )
+        case c_break1
+        solve( !KU( ~K_R1 ) @ #vk.11 )
+          case Compromise_Alice
+          by contradiction /* from formulas */
+        next
+          case Compromise_Bob
+          by contradiction /* from formulas */
+        qed
+      qed
+    qed
+  qed
+next
+  case Bob_receives2
+  solve( B2( a, b, <N_B, C_2, R_2, K_R11, r_B> ) ▶₀ #i )
+    case Bob_receives_sends1
+    solve( !KU( ~A_ID ) @ #vk.6 )
+      case Alice_sends1
+      solve( splitEqs(0) )
+        case split_case_1
+        solve( !KU( senc(<$A, s_A, N_A, R_3, R_4>,
+                         break1(rep(puf(~C_2old), hd_2e)))
+               ) @ #vk.3 )
+          case c_senc
+          solve( !KU( break1(rep(puf(~C_2old), hd_2e)) ) @ #vk.9 )
+            case c_break1
+            solve( !KU( rep(puf(~C_2old), hd_2e) ) @ #vk.18 )
+              case c_rep
+              solve( !KU( puf(~C_2old) ) @ #vk.19 )
+                case Compromise_Bob
+                by contradiction /* from formulas */
+              qed
+            qed
+          qed
+        qed
+      next
+        case split_case_2
+        solve( !KU( senc(<$A, s_A, N_A, R_3, R_4>, break1(fuzzyk(puf(x))))
+               ) @ #vk.3 )
+          case Alice_receives_sends2
+          by contradiction /* from formulas */
+        next
+          case c_senc
+          solve( !KU( break1(fuzzyk(puf(x))) ) @ #vk.9 )
+            case c_break1
+            solve( !KU( mac(break2(fuzzyk(puf(x))),
+                            senc(<$A, s_A, N_A, R_3, R_4>, break1(fuzzyk(puf(x)))))
+                   ) @ #vk.6 )
+              case Alice_receives_sends2
+              by contradiction /* from formulas */
+            next
+              case c_mac
+              solve( !KU( break2(fuzzyk(puf(x))) ) @ #vk.19 )
+                case c_break2
+                solve( !KU( fuzzyhd(puf(x)) ) @ #vk.8 )
+                  case Alice_receives_sends2
+                  by contradiction /* from formulas */
+                next
+                  case c_fuzzyhd
+                  solve( !KU( puf(x) ) @ #vk.20 )
+                    case Alice_receives_sends2_case_1
+                    by contradiction /* from formulas */
+                  next
+                    case Alice_receives_sends2_case_2
+                    by contradiction /* from formulas */
+                  next
+                    case Compromise_Bob
+                    by contradiction /* from formulas */
+                  qed
+                qed
+              qed
+            qed
+          qed
+        qed
+      qed
+    qed
+  qed
+qed
+
+lemma injective_agreement:
+  all-traces
+  "∀ A B t #i.
+    (Commit( A, B, t ) @ #i) ⇒
+    (((∃ #j.
+        ((Involved( B, A, t ) @ #j) ∧ (#j < #i)) ∧
+        (¬(∃ A2 B2 #i2. (Commit( A2, B2, t ) @ #i2) ∧ (¬(#i2 = #i))))) ∨
+      (∃ C #r. (CompromiseB( C ) @ #r) ∧ (Genuine( C ) @ #i))) ∨
+     (∃ C #r. (CompromiseA( C ) @ #r) ∧ (Genuine( C ) @ #i)))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ A B t #i.
+  (Commit( A, B, t ) @ #i)
+ ∧
+  (∀ #j.
+    (Involved( B, A, t ) @ #j)
+   ⇒
+    ((¬(#j < #i)) ∨
+     (∃ A2 B2 #i2. (Commit( A2, B2, t ) @ #i2) ∧ ¬(#i2 = #i)))) ∧
+  (∀ C #r. (CompromiseB( C ) @ #r) ∧ (Genuine( C ) @ #i) ⇒ ⊥) ∧
+  (∀ C #r. (CompromiseA( C ) @ #r) ∧ (Genuine( C ) @ #i) ⇒ ⊥)"
+*/
+simplify
+solve( Commit( A, B, t ) @ #i )
+  case Alice_receives_sends2
+  solve( A2( A, B, <N_1, K_R11, K_R12, r_A> ) ▶₀ #i )
+    case Alice_sends1
+    solve( !KU( senc(<$B, C_2, N_B, ~N_1>, break1(~K_R1)) ) @ #vk.1 )
+      case Bob_receives_sends1
+      solve( (#i2 < #i)  ∥ (#i < #i2) )
+        case case_1
+        solve( Commit( A2, B2, 'init' ) @ #i2 )
+          case Alice_receives_sends2
+          solve( A2( A2, B2, <N_1.1, K_R11, K_R12, r_A.1> ) ▶₀ #i2 )
+            case Alice_sends1
+            by contradiction /* cyclic */
+          qed
+        qed
+      next
+        case case_2
+        solve( Commit( A2, B2, 'init' ) @ #i2 )
+          case Alice_receives_sends2
+          solve( A2( A2, B2, <N_1.1, K_R11, K_R12, r_A.1> ) ▶₀ #i2 )
+            case Alice_sends1
+            by contradiction /* cyclic */
+          qed
+        qed
+      qed
+    next
+      case c_senc
+      solve( !KU( break1(~K_R1) ) @ #vk.4 )
+        case c_break1
+        solve( !KU( ~K_R1 ) @ #vk.11 )
+          case Compromise_Alice
+          by contradiction /* from formulas */
+        next
+          case Compromise_Bob
+          by contradiction /* from formulas */
+        qed
+      qed
+    qed
+  qed
+next
+  case Bob_receives2
+  solve( B2( A, B, <N_B, C_2, R_2, K_R11, r_B> ) ▶₀ #i )
+    case Bob_receives_sends1
+    solve( !KU( ~A_ID ) @ #vk.6 )
+      case Alice_sends1
+      solve( splitEqs(0) )
+        case split_case_1
+        solve( !KU( senc(<$A, s_A, N_A, R_3, R_4>,
+                         break1(rep(puf(~C_2old), hd_2e)))
+               ) @ #vk.3 )
+          case c_senc
+          solve( !KU( break1(rep(puf(~C_2old), hd_2e)) ) @ #vk.9 )
+            case c_break1
+            solve( !KU( rep(puf(~C_2old), hd_2e) ) @ #vk.18 )
+              case c_rep
+              solve( !KU( puf(~C_2old) ) @ #vk.19 )
+                case Compromise_Bob
+                by contradiction /* from formulas */
+              qed
+            qed
+          qed
+        qed
+      next
+        case split_case_2
+        solve( !KU( senc(<$A, s_A, N_A, R_3, R_4>, break1(fuzzyk(puf(x))))
+               ) @ #vk.3 )
+          case Alice_receives_sends2
+          solve( (#i2 < #i)  ∥ (#i < #i2) )
+            case case_1
+            solve( Commit( A2, B2, 'resp' ) @ #i2 )
+              case Bob_receives2
+              solve( B2( A2, B2, <N_B.2, C_2.1, R_2, K_R11, r_B.1> ) ▶₀ #i2 )
+                case Bob_receives_sends1
+                by contradiction /* cyclic */
+              qed
+            qed
+          next
+            case case_2
+            solve( Commit( A2, B2, 'resp' ) @ #i2 )
+              case Bob_receives2
+              solve( B2( A2, B2, <N_B.2, C_2.1, R_2, K_R11, r_B.1> ) ▶₀ #i2 )
+                case Bob_receives_sends1
+                by contradiction /* cyclic */
+              qed
+            qed
+          qed
+        next
+          case c_senc
+          solve( !KU( break1(fuzzyk(puf(x))) ) @ #vk.9 )
+            case c_break1
+            solve( !KU( mac(break2(fuzzyk(puf(x))),
+                            senc(<$A, s_A, N_A, R_3, R_4>, break1(fuzzyk(puf(x)))))
+                   ) @ #vk.6 )
+              case Alice_receives_sends2
+              solve( (#i2 < #i)  ∥ (#i < #i2) )
+                case case_1
+                solve( Commit( A2, B2, 'resp' ) @ #i2 )
+                  case Bob_receives2
+                  solve( B2( A2, B2, <N_B.2, C_2.1, R_2, K_R11, r_B.1> ) ▶₀ #i2 )
+                    case Bob_receives_sends1
+                    by contradiction /* cyclic */
+                  qed
+                qed
+              next
+                case case_2
+                solve( Commit( A2, B2, 'resp' ) @ #i2 )
+                  case Bob_receives2
+                  solve( B2( A2, B2, <N_B.2, C_2.1, R_2, K_R11, r_B.1> ) ▶₀ #i2 )
+                    case Bob_receives_sends1
+                    by contradiction /* cyclic */
+                  qed
+                qed
+              qed
+            next
+              case c_mac
+              solve( !KU( break2(fuzzyk(puf(x))) ) @ #vk.19 )
+                case c_break2
+                solve( !KU( fuzzyhd(puf(x)) ) @ #vk.8 )
+                  case Alice_receives_sends2
+                  solve( (#i2 < #i)  ∥ (#i < #i2) )
+                    case case_1
+                    solve( Commit( A2, B2, 'resp' ) @ #i2 )
+                      case Bob_receives2
+                      solve( B2( A2, B2, <N_B.1, C_2.1, R_2, K_R11, r_B.1> ) ▶₀ #i2 )
+                        case Bob_receives_sends1
+                        by contradiction /* cyclic */
+                      qed
+                    qed
+                  next
+                    case case_2
+                    solve( Commit( A2, B2, 'resp' ) @ #i2 )
+                      case Bob_receives2
+                      solve( B2( A2, B2, <N_B.1, C_2.1, R_2, K_R11, r_B.1> ) ▶₀ #i2 )
+                        case Bob_receives_sends1
+                        by contradiction /* cyclic */
+                      qed
+                    qed
+                  qed
+                next
+                  case c_fuzzyhd
+                  solve( !KU( puf(x) ) @ #vk.20 )
+                    case Alice_receives_sends2_case_1
+                    solve( (#i2 < #i)  ∥ (#i < #i2) )
+                      case case_1
+                      solve( Commit( A2, B2, 'resp' ) @ #i2 )
+                        case Bob_receives2
+                        solve( B2( A2, B2, <N_B.1, C_2.2, R_2, K_R11, r_B.1> ) ▶₀ #i2 )
+                          case Bob_receives_sends1
+                          by contradiction /* cyclic */
+                        qed
+                      qed
+                    next
+                      case case_2
+                      solve( Commit( A2, B2, 'resp' ) @ #i2 )
+                        case Bob_receives2
+                        solve( B2( A2, B2, <N_B.1, C_2.2, R_2, K_R11, r_B.1> ) ▶₀ #i2 )
+                          case Bob_receives_sends1
+                          by contradiction /* cyclic */
+                        qed
+                      qed
+                    qed
+                  next
+                    case Alice_receives_sends2_case_2
+                    solve( (#i2 < #i)  ∥ (#i < #i2) )
+                      case case_1
+                      solve( Commit( A2, B2, 'resp' ) @ #i2 )
+                        case Bob_receives2
+                        solve( B2( A2, B2, <N_B.2, C_2.2, R_2, K_R11, r_B.1> ) ▶₀ #i2 )
+                          case Bob_receives_sends1
+                          by contradiction /* cyclic */
+                        qed
+                      qed
+                    next
+                      case case_2
+                      solve( Commit( A2, B2, 'resp' ) @ #i2 )
+                        case Bob_receives2
+                        solve( B2( A2, B2, <N_B.2, C_2.2, R_2, K_R11, r_B.1> ) ▶₀ #i2 )
+                          case Bob_receives_sends1
+                          by contradiction /* cyclic */
+                        qed
+                      qed
+                    qed
+                  next
+                    case Compromise_Bob
+                    by contradiction /* from formulas */
+                  qed
+                qed
+              qed
+            qed
+          qed
+        qed
+      qed
+    qed
+  qed
+qed
+
+lemma message_authentication_m_S:
+  all-traces
+  "∀ b m #i.
+    (AuthenticB( b, m ) @ #i) ⇒
+    (((∃ #j. (SendB( b, m ) @ #j) ∧ (#j < #i)) ∨
+      (∃ B #r. ((CompromiseA( B ) @ #r) ∧ (Genuine( B ) @ #i)) ∧ (#r < #i))) ∨
+     (∃ B #r. ((CompromiseB( B ) @ #r) ∧ (Genuine( B ) @ #i)) ∧ (#r < #i)))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ b m #i.
+  (AuthenticB( b, m ) @ #i)
+ ∧
+  (∀ #j. (SendB( b, m ) @ #j) ⇒ ¬(#j < #i)) ∧
+  (∀ B #r. (CompromiseA( B ) @ #r) ∧ (Genuine( B ) @ #i) ⇒ ¬(#r < #i)) ∧
+  (∀ B #r. (CompromiseB( B ) @ #r) ∧ (Genuine( B ) @ #i) ⇒ ¬(#r < #i))"
+*/
+simplify
+solve( A2( A, b, <N_1, K_R11, K_R12, r_A> ) ▶₀ #i )
+  case Alice_sends1
+  solve( !KU( senc(<$B, C_2, N_B, ~N_1>, break1(~K_R1)) ) @ #vk.1 )
+    case Bob_receives_sends1
+    by contradiction /* from formulas */
+  next
+    case c_senc
+    solve( !KU( break1(~K_R1) ) @ #vk.4 )
+      case c_break1
+      solve( !KU( ~K_R1 ) @ #vk.11 )
+        case Compromise_Alice
+        by contradiction /* from formulas */
+      next
+        case Compromise_Bob
+        by contradiction /* from formulas */
+      qed
+    qed
+  qed
+qed
+
+lemma message_authentication_m_A:
+  all-traces
+  "∀ b m #i.
+    (AuthenticA( b, m ) @ #i) ⇒
+    ((∃ #j. (SendA( b, m ) @ #j) ∧ (#j < #i)) ∨
+     (∃ B #r. ((CompromiseB( B ) @ #r) ∧ (Genuine( B ) @ #i)) ∧ (#r < #i)))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ b m #i.
+  (AuthenticA( b, m ) @ #i)
+ ∧
+  (∀ #j. (SendA( b, m ) @ #j) ⇒ ¬(#j < #i)) ∧
+  (∀ B #r. (CompromiseB( B ) @ #r) ∧ (Genuine( B ) @ #i) ⇒ ¬(#r < #i))"
+*/
+simplify
+solve( B2( B, b, <N_B, C_2, R_2, K_R11, r_B> ) ▶₀ #i )
+  case Bob_receives_sends1
+  solve( !KU( ~A_ID ) @ #vk.6 )
+    case Alice_sends1
+    solve( splitEqs(0) )
+      case split_case_1
+      solve( !KU( senc(<$A, s_A, N_A, R_3, R_4>,
+                       break1(rep(puf(~C_2old), hd_2e)))
+             ) @ #vk.3 )
+        case c_senc
+        solve( !KU( break1(rep(puf(~C_2old), hd_2e)) ) @ #vk.9 )
+          case c_break1
+          solve( !KU( rep(puf(~C_2old), hd_2e) ) @ #vk.18 )
+            case c_rep
+            solve( !KU( puf(~C_2old) ) @ #vk.19 )
+              case Compromise_Bob
+              by contradiction /* from formulas */
+            qed
+          qed
+        qed
+      qed
+    next
+      case split_case_2
+      solve( !KU( senc(<$A, s_A, N_A, R_3, R_4>, break1(fuzzyk(puf(x))))
+             ) @ #vk.3 )
+        case Alice_receives_sends2
+        by contradiction /* from formulas */
+      next
+        case c_senc
+        solve( !KU( break1(fuzzyk(puf(x))) ) @ #vk.9 )
+          case c_break1
+          solve( !KU( mac(break2(fuzzyk(puf(x))),
+                          senc(<$A, s_A, N_A, R_3, R_4>, break1(fuzzyk(puf(x)))))
+                 ) @ #vk.6 )
+            case Alice_receives_sends2
+            by contradiction /* from formulas */
+          next
+            case c_mac
+            solve( !KU( break2(fuzzyk(puf(x))) ) @ #vk.19 )
+              case c_break2
+              solve( !KU( fuzzyhd(puf(x)) ) @ #vk.8 )
+                case Alice_receives_sends2
+                solve( !KU( fuzzyk(puf(x)) ) @ #vk.19 )
+                  case Alice_receives_sends2
+                  by contradiction /* from formulas */
+                next
+                  case c_fuzzyk
+                  solve( !KU( puf(x) ) @ #vk.23 )
+                    case Compromise_Bob
+                    by contradiction /* from formulas */
+                  qed
+                qed
+              next
+                case c_fuzzyhd
+                solve( !KU( puf(x) ) @ #vk.20 )
+                  case Alice_receives_sends2_case_1
+                  solve( !KU( fuzzyk(puf(h(<C_2.1, ~N_A.1>))) ) @ #vk.21 )
+                    case c_fuzzyk
+                    solve( !KU( senc(<$B, C_2.1, N_B.1, ~N_1>, break1(~K_R1)) ) @ #vk.23 )
+                      case Bob_receives_sends1
+                      solve( !KU( fuzzyk(puf(~C_2)) ) @ #vk.25 )
+                        case Alice_receives_sends2
+                        by contradiction /* from formulas */
+                      next
+                        case c_fuzzyk
+                        by solve( !KU( puf(~C_2) ) @ #vk.26 )
+                      qed
+                    next
+                      case c_senc
+                      solve( !KU( break1(~K_R1) ) @ #vk.27 )
+                        case c_break1
+                        solve( !KU( ~K_R1 ) @ #vk.34 )
+                          case Compromise_Alice
+                          solve( !KU( mac(break2(~K_R1),
+                                          senc(<$B, C_2.1, N_B.1, ~N_1>, break1(~K_R1)))
+                                 ) @ #vk.26 )
+                            case Bob_receives_sends1
+                            solve( !KU( ~C_2 ) @ #vk.32 )
+                              case Bob_receives_sends1
+                              solve( !KU( fuzzyk(puf(~C_2)) ) @ #vk.30 )
+                                case Alice_receives_sends2
+                                by contradiction /* from formulas */
+                              next
+                                case c_fuzzyk
+                                by solve( !KU( puf(~C_2) ) @ #vk.34 )
+                              qed
+                            qed
+                          next
+                            case c_mac
+                            solve( !KU( break2(~K_R1) ) @ #vk.35 )
+                              case c_break2
+                              solve( !KU( fuzzyk(puf(C_2.1)) ) @ #vk.28 )
+                                case Alice_receives_sends2
+                                by contradiction /* from formulas */
+                              next
+                                case c_fuzzyk
+                                solve( !KU( puf(C_2.1) ) @ #vk.36 )
+                                  case Compromise_Bob
+                                  by contradiction /* from formulas */
+                                qed
+                              qed
+                            qed
+                          qed
+                        next
+                          case Compromise_Bob
+                          by contradiction /* from formulas */
+                        qed
+                      qed
+                    qed
+                  qed
+                next
+                  case Alice_receives_sends2_case_2
+                  solve( !KU( fuzzyk(puf(h(<h(<C_2.1, ~N_A.1>), N_B.1>))) ) @ #vk.21 )
+                    case c_fuzzyk
+                    solve( !KU( senc(<$B, C_2.1, N_B.1, ~N_1>, break1(~K_R1)) ) @ #vk.23 )
+                      case Bob_receives_sends1
+                      solve( !KU( fuzzyk(puf(~C_2)) ) @ #vk.25 )
+                        case Alice_receives_sends2
+                        by contradiction /* from formulas */
+                      next
+                        case c_fuzzyk
+                        by solve( !KU( puf(~C_2) ) @ #vk.26 )
+                      qed
+                    next
+                      case c_senc
+                      solve( !KU( break1(~K_R1) ) @ #vk.27 )
+                        case c_break1
+                        solve( !KU( ~K_R1 ) @ #vk.34 )
+                          case Compromise_Alice
+                          solve( !KU( mac(break2(~K_R1),
+                                          senc(<$B, C_2.1, N_B.1, ~N_1>, break1(~K_R1)))
+                                 ) @ #vk.26 )
+                            case Bob_receives_sends1
+                            solve( !KU( ~C_2 ) @ #vk.32 )
+                              case Bob_receives_sends1
+                              solve( !KU( fuzzyk(puf(~C_2)) ) @ #vk.30 )
+                                case Alice_receives_sends2
+                                by contradiction /* from formulas */
+                              next
+                                case c_fuzzyk
+                                by solve( !KU( puf(~C_2) ) @ #vk.34 )
+                              qed
+                            qed
+                          next
+                            case c_mac
+                            solve( !KU( break2(~K_R1) ) @ #vk.35 )
+                              case c_break2
+                              solve( !KU( fuzzyk(puf(C_2.1)) ) @ #vk.28 )
+                                case Alice_receives_sends2
+                                by contradiction /* from formulas */
+                              next
+                                case c_fuzzyk
+                                solve( !KU( puf(C_2.1) ) @ #vk.36 )
+                                  case Compromise_Bob
+                                  by contradiction /* from formulas */
+                                qed
+                              qed
+                            qed
+                          qed
+                        next
+                          case Compromise_Bob
+                          by contradiction /* from formulas */
+                        qed
+                      qed
+                    qed
+                  qed
+                next
+                  case Compromise_Bob
+                  by contradiction /* from formulas */
+                qed
+              qed
+            qed
+          qed
+        qed
+      qed
+    qed
+  qed
+qed
+
+lemma PFS_session_key_Alice:
+  all-traces
+  "∀ x #i.
+    ((Secret( x ) @ #i) ∧ (Role( 'A' ) @ #i)) ⇒ (¬(∃ #j. K( x ) @ #j))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ x #i. (Secret( x ) @ #i) ∧ (Role( 'A' ) @ #i) ∧ ∃ #j. (K( x ) @ #j)"
+*/
+simplify
+solve( Secret( x ) @ #i )
+  case Alice_receives_sends2
+  solve( A2( A, B, <N_1, K_R11, K_R12, r_A> ) ▶₀ #i )
+    case Alice_sends1
+    solve( Role( 'A' ) @ #i )
+      case Alice_receives_sends2
+      solve( !KU( h(~r_A) ) @ #vk )
+        case c_h
+        by solve( !KU( ~r_A ) @ #vk.4 )
+      qed
+    qed
+  qed
+next
+  case Bob_receives2
+  solve( B2( B, A, <N_B, C_2, R_2, K_R11, r_B> ) ▶₀ #i )
+    case Bob_receives_sends1
+    by solve( Role( 'A' ) @ #i )
+  qed
+qed
+
+lemma PFS_session_key_Bob:
+  all-traces
+  "∀ x #i.
+    ((Secret( x ) @ #i) ∧ (Role( 'B' ) @ #i)) ⇒ (¬(∃ #j. K( x ) @ #j))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ x #i. (Secret( x ) @ #i) ∧ (Role( 'B' ) @ #i) ∧ ∃ #j. (K( x ) @ #j)"
+*/
+simplify
+solve( Secret( x ) @ #i )
+  case Alice_receives_sends2
+  solve( A2( A, B, <N_1, K_R11, K_R12, r_A> ) ▶₀ #i )
+    case Alice_sends1
+    by solve( Role( 'B' ) @ #i )
+  qed
+next
+  case Bob_receives2
+  solve( B2( B, A, <N_B, C_2, R_2, K_R11, r_B> ) ▶₀ #i )
+    case Bob_receives_sends1
+    solve( Role( 'B' ) @ #i )
+      case Bob_receives2
+      solve( !KU( ~A_ID ) @ #vk.7 )
+        case Alice_sends1
+        solve( splitEqs(0) )
+          case split_case_1
+          solve( !KU( h(SKG(s_A, ~r_B)) ) @ #vk.2 )
+            case c_h
+            solve( !KU( SKG(s_A, ~r_B) ) @ #vk.9 )
+              case c_SKG
+              by solve( !KU( ~r_B ) @ #vk.11 )
+            qed
+          qed
+        next
+          case split_case_2
+          solve( !KU( h(SKG(s_A, ~r_B)) ) @ #vk.2 )
+            case c_h
+            solve( !KU( SKG(s_A, ~r_B) ) @ #vk.9 )
+              case c_SKG
+              by solve( !KU( ~r_B ) @ #vk.11 )
+            qed
+          qed
+        qed
+      qed
+    qed
+  qed
+qed
+
+lemma types [sources]:
+  all-traces
+  "((∀ N_1 m_1 #i.
+      (B1_IN( N_1, m_1 ) @ #i) ⇒
+      ((∃ #j. (!KU( N_1 ) @ #j) ∧ (#j < #i)) ∨ (∃ #j. A1_OUT( m_1 ) @ #j))) ∧
+    (∀ N_S m_S #i.
+      (A1_IN( N_S, m_S ) @ #i) ⇒
+      ((∃ #j. (!KU( N_S ) @ #j) ∧ (#j < #i)) ∨ (∃ #j. B1_OUT( m_S ) @ #j)))) ∧
+   (∀ N_A m_A #i.
+     (B2_IN( N_A, m_A ) @ #i) ⇒
+     ((∃ #j. (!KU( N_A ) @ #j) ∧ (#j < #i)) ∨ (∃ #j. A2_OUT( m_A ) @ #j)))"
+/*
+guarded formula characterizing all counter-examples:
+"((∃ N_1 m_1 #i.
+    (B1_IN( N_1, m_1 ) @ #i)
+   ∧
+    (∀ #j. (!KU( N_1 ) @ #j) ⇒ ¬(#j < #i)) ∧
+    (∀ #j. (A1_OUT( m_1 ) @ #j) ⇒ ⊥)) ∨
+  (∃ N_S m_S #i.
+    (A1_IN( N_S, m_S ) @ #i)
+   ∧
+    (∀ #j. (!KU( N_S ) @ #j) ⇒ ¬(#j < #i)) ∧
+    (∀ #j. (B1_OUT( m_S ) @ #j) ⇒ ⊥)) ∨
+  (∃ N_A m_A #i.
+    (B2_IN( N_A, m_A ) @ #i)
+   ∧
+    (∀ #j. (!KU( N_A ) @ #j) ⇒ ¬(#j < #i)) ∧
+    (∀ #j. (A2_OUT( m_A ) @ #j) ⇒ ⊥)))"
+*/
+induction
+  case empty_trace
+  by contradiction /* from formulas */
+next
+  case non_empty_trace
+  simplify
+  solve( (∃ N_1 m_1 #i.
+           (B1_IN( N_1, m_1 ) @ #i)
+          ∧
+           (∀ #j. (!KU( N_1 ) @ #j) ⇒ ¬(#j < #i)) ∧
+           (∀ #j. (A1_OUT( m_1 ) @ #j) ⇒ ⊥))  ∥
+         (∃ N_S m_S #i.
+           (A1_IN( N_S, m_S ) @ #i)
+          ∧
+           (∀ #j. (!KU( N_S ) @ #j) ⇒ ¬(#j < #i)) ∧
+           (∀ #j. (B1_OUT( m_S ) @ #j) ⇒ ⊥))  ∥
+         (∃ N_A m_A #i.
+           (B2_IN( N_A, m_A ) @ #i)
+          ∧
+           (∀ #j. (!KU( N_A ) @ #j) ⇒ ¬(#j < #i)) ∧
+           (∀ #j. (A2_OUT( m_A ) @ #j) ⇒ ⊥)) )
+    case case_1
+    by contradiction /* from formulas */
+  next
+    case case_2
+    solve( (last(#i))  ∥
+           (∃ #j. (!KU( N_S ) @ #j) ∧ (¬(last(#j))) ∧ (#j < #i))  ∥
+           (∃ #j. (B1_OUT( senc(<B, C_2, N_S, N_1>, K_R11) ) @ #j) ∧ ¬(last(#j))) )
+      case case_1
+      solve( A2( A, B, <N_1, K_R11, K_R12, r_A> ) ▶₀ #i )
+        case Alice_sends1
+        solve( !KU( senc(<$B, C_2, N_S, ~N_1>, break1(~K_R1)) ) @ #vk.1 )
+          case Bob_receives_sends1
+          by contradiction /* from formulas */
+        next
+          case c_senc
+          by contradiction /* from formulas */
+        qed
+      qed
+    next
+      case case_2
+      by contradiction /* from formulas */
+    next
+      case case_3
+      by contradiction /* from formulas */
+    qed
+  next
+    case case_3
+    solve( (last(#i))  ∥
+           (∃ #j. (!KU( N_A ) @ #j) ∧ (¬(last(#j))) ∧ (#j < #i))  ∥
+           (∃ #j.
+             (A2_OUT( senc(<A, s_A, N_A, R_3, R_4>, break1(z)) ) @ #j)
+            ∧
+             ¬(last(#j))) )
+      case case_1
+      solve( B2( B, A, <N_B, C_2, R_2, K_R11, r_B> ) ▶₀ #i )
+        case Bob_receives_sends1
+        solve( (∃ #j. (!KU( N_1 ) @ #j) ∧ (¬(last(#j))) ∧ (#j < #vr))  ∥
+               (∃ #j. (A1_OUT( <~A_ID, N_1> ) @ #j) ∧ ¬(last(#j))) )
+          case case_1
+          solve( !KU( ~A_ID ) @ #vk.6 )
+            case Alice_sends1
+            solve( splitEqs(0) )
+              case split_case_1
+              solve( !KU( senc(<$A, s_A, N_A, R_3, R_4>,
+                               break1(rep(puf(~C_2old), hd_2e)))
+                     ) @ #vk.3 )
+                case c_senc
+                by contradiction /* from formulas */
+              qed
+            next
+              case split_case_2
+              solve( !KU( senc(<$A, s_A, N_A, R_3, R_4>, break1(fuzzyk(puf(x))))
+                     ) @ #vk.3 )
+                case Alice_receives_sends2
+                by contradiction /* from formulas */
+              next
+                case c_senc
+                by contradiction /* from formulas */
+              qed
+            qed
+          qed
+        next
+          case case_2
+          solve( A1( A.1, B.1, <K_R1.1, ~A_ID, r_A> ) ▶₀ #j )
+            case Init_A
+            solve( !KU( ~A_ID ) @ #vk.6 )
+              case Alice_sends1
+              solve( !KU( ~N_1 ) @ #vk.7 )
+                case Alice_sends1
+                solve( splitEqs(0) )
+                  case split_case_1
+                  solve( !KU( senc(<$A, s_A, N_A, R_3, R_4>,
+                                   break1(rep(puf(~C_2old), hd_2e)))
+                         ) @ #vk.4 )
+                    case c_senc
+                    by contradiction /* from formulas */
+                  qed
+                next
+                  case split_case_2
+                  solve( !KU( senc(<$A, s_A, N_A, R_3, R_4>, break1(fuzzyk(puf(x))))
+                         ) @ #vk.4 )
+                    case Alice_receives_sends2
+                    by contradiction /* from formulas */
+                  next
+                    case c_senc
+                    by contradiction /* from formulas */
+                  qed
+                qed
+              qed
+            qed
+          qed
+        qed
+      qed
+    next
+      case case_2
+      by contradiction /* from formulas */
+    next
+      case case_3
+      by contradiction /* from formulas */
+    qed
+  qed
+qed
+
+lemma executable:
+  exists-trace
+  "∃ A B m #i #j.
+    ((SendA( A, m ) @ #i) ∧ (ReceiveB( B, m ) @ #j)) ∧ (#i < #j)"
+/*
+guarded formula characterizing all satisfying traces:
+"∃ A B m #i #j. (SendA( A, m ) @ #i) ∧ (ReceiveB( B, m ) @ #j) ∧ #i < #j"
+*/
+simplify
+solve( A2( A, B, <N_1, K_R11, K_R12, r_A> ) ▶₀ #i )
+  case Alice_sends1
+  solve( B2( B.1, $A, <N_B.1, C_2.1, puf(x), K_R11, r_B> ) ▶₀ #j )
+    case Bob_receives_sends1
+    solve( !KU( senc(<$B, C_2, N_B, ~N_1>, break1(~K_R1)) ) @ #vk.1 )
+      case Bob_receives_sends1
+      solve( !KU( ~A_ID ) @ #vk.9 )
+        case Alice_sends1
+        solve( !KU( ~N_1 ) @ #vk.10 )
+          case Alice_sends1
+          solve( !KU( senc(<$A, ~s_A, ~N_A, puf(h(<~C_2, ~N_A>)),
+                            puf(h(<h(<~C_2, ~N_A>), ~N_B>))>,
+                           break1(fuzzyk(puf(~C_2))))
+                 ) @ #vk.7 )
+            case Alice_receives_sends2
+            solve( !KU( mac(break2(~K_R1),
+                            senc(<$B, ~C_2, ~N_B, ~N_1>, break1(~K_R1)))
+                   ) @ #vk.6 )
+              case Bob_receives_sends1
+              solve( !KU( mac(break2(fuzzyk(puf(~C_2))),
+                              senc(<$A, ~s_A, ~N_A, puf(h(<~C_2, ~N_A>)),
+                                    puf(h(<h(<~C_2, ~N_A>), ~N_B>))>,
+                                   break1(fuzzyk(puf(~C_2)))))
+                     ) @ #vk.9 )
+                case Alice_receives_sends2
+                solve( !KU( fuzzyhd(puf(~C_2)) ) @ #vk.10 )
+                  case Alice_receives_sends2
+                  SOLVED // trace found
+                qed
+              qed
+            qed
+          qed
+        qed
+      qed
+    qed
+  qed
+qed
+
+/* All well-formedness checks were successful. */
+
+end
+
+==============================================================================
+summary of summaries:
+
+analyzed: PUF_Authentication_protocol.spthy
+
+  aliveness (all-traces): verified (12 steps)
+  weak_agreement (all-traces): verified (29 steps)
+  noninjective_agreement (all-traces): verified (29 steps)
+  injective_agreement (all-traces): verified (65 steps)
+  message_authentication_m_S (all-traces): verified (8 steps)
+  message_authentication_m_A (all-traces): verified (58 steps)
+  PFS_session_key_Alice (all-traces): verified (8 steps)
+  PFS_session_key_Bob (all-traces): verified (14 steps)
+  types (all-traces): verified (33 steps)
+  executable (exists-trace): verified (11 steps)
+
+==============================================================================
