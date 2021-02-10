@@ -8,3 +8,5 @@ As showed below the protocol provides: aliveness, weak agreement, noninjective a
 ![](</images/PropertyVerification.jpg>)
 
 Further the protocol provides anonymity and untraceability. These are verified using observation equivalence: simply comment 
+
+![](</images/Observation_equivalence.jpg>)
