@@ -5,8 +5,10 @@ Miroslav Mitev, Mahdi Shekiba-Herfeh, Arsenia Chorti, Martin Reed, "Multi-factor
 
 As showed below the protocol provides: aliveness, weak agreement, noninjective agreement injective agreement, message authentication, perfect forward secrecy.
 
-![Figure 1](</images/PropertyVerification.jpg>)
+![](</images/PropertyVerification.jpg>)
+*image_caption*
 
 Further the protocol provides anonymity and untraceability. These are verified using observation equivalence: simply comment 
 
-![Figure 2](</images/Observation_equivalence.jpg>)
+![](</images/Observation_equivalence.jpg>)
+*image_caption*
