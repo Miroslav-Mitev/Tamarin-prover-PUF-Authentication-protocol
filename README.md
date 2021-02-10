@@ -5,15 +5,13 @@ Miroslav Mitev, Mahdi Shekiba-Herfeh, Arsenia Chorti, Martin Reed, "Multi-factor
 
 As showed in Figure 1 the protocol provides: aliveness, weak agreement, noninjective agreement injective agreement, message authentication, perfect forward secrecy. Rules **types** and **executable** are used to link the events in the protocol and the prove its executability, respectively.
 
-Further, figure 2 shows that the protocol provides anonymity and untraceability. These are verified using observation equivalence. To prove that simply comment rules **Compromise_Alice** and **Compromise_Bob** and add **Out(diff(A_ID_new, ~Random_variable))** to the conclusion of rule **Alice_receives_sends2**.
-
-
+Further, figure 2 shows that the protocol provides anonymity and untraceability. These are verified using observation equivalence - this assumes two systems (i.e., two instances of the protocol) and it is used to prove that an adversary cannot distinguish between the systems. The example in Figure 2 assumes the following two instances: In the 1st Alice sends her one-time alias ID, in the second she sends a random variable. These are then observed by an adversary. As shown in the figure, regardless of which parameter the adversary observes the final result is equality, i.e., cannot be distinguished. To implement the this example simply comment rules **Compromise_Alice** and **Compromise_Bob** and add **Out(diff(A_ID_new, ~Random_variable))** to the conclusion of rule **Alice_receives_sends2**.
 
 | ![](</images/PropertyVerification.jpg>) | 
 |:--:| 
-|Figure 1:|
+|Figure 1: Verification of the security properties of the authentication protocol|
 
 
 | ![](</images/Observation_equivalence.jpg>) |
 |:--:|
-|Figure 2:|
+|Figure 2: Proof for observational equivalence. The adversary is not able distinguish between Alice's one-time alias ID and a random varible. This proves that the protocol preserve Alice's privacy.|
