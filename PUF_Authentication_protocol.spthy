@@ -1,0 +1,198 @@
+/*
+Author: Miroslav Mitev
+
+Verification of the security properties of the authentication protocol presented in: 
+
+Miroslav Mitev, Mahdi Shekiba-Herfeh, Arsenia Chorti, Martin Reed,
+"Multi-factor Physical Layer Security Authentication in Short Blocklength Communication"
+*/
+
+theory PUF_protocol
+begin
+builtins:  symmetric-encryption, hashing
+functions: break1/1, break2/1, mac/2, vermac/3, true/0,  fuzzyk/1, fuzzyhd/1, rep/2, puf/1 [private], SKG/2
+equations:
+	vermac(x.1, x.2, mac(x.1, x.2)) = true,
+	rep(puf(x.1), fuzzyhd(puf(x.2))) = fuzzyk(puf(x.2))
+
+rule Enrollment:
+let
+R_2=puf(~C_2old)
+in
+[ Fr(~K_R1), Fr(~A_ID), Fr(~C_2), Fr(~C_2old)]
+--[Once(),Secure(~C_2),Secure(R_2),Secure(~K_R1),Secure(~A_ID)]->
+[A0($A, $B, <~K_R1, ~A_ID>), B0($B, $A, <~K_R1, ~A_ID, ~C_2, R_2>)]
+
+
+rule Init_A:
+  [ Fr(~id), Fr(~r_A), A0(A, B, <K_R1, A_ID>)]
+--[ Initialise(A, ~id), Role('A')]->
+  [ A1(A, B, <K_R1, A_ID, ~r_A>), !KeyA(A, K_R1)]
+
+rule Init_B:
+  [ Fr(~id), Fr(~r_B), B0(B, A, <K_R1, A_ID, C_2, R_2>)]
+--[ Initialise(B, ~id), Role('B')]->
+  [ B1(B, A, <K_R1, A_ID, C_2, R_2, ~r_B>), !KeyB(B, <K_R1, R_2>)]
+
+// To prove anonymity and untraceability properties comment rules: Compromise_Alice and Compromise_Bob
+rule Compromise_Alice:
+[!KeyA(A, K_R1)]
+--[CompromiseA(A)]->
+[Out(K_R1)]
+
+rule Compromise_Bob:
+[!KeyB(B, <K_R1, R_2>)]
+--[CompromiseB(B)]->
+[Out(<K_R1, R_2>)]
+
+rule Alice_sends1:
+let
+K_R11=break1(K_R1)
+K_R12=break2(K_R1)
+m_1=<A_ID,~N_1>
+in
+[A1(A, B, <K_R1, A_ID, r_A>), Fr(~N_1)]
+--[A1_OUT(m_1), Role('A')]->
+[Out(m_1), A2(A, B, <~N_1, K_R11, K_R12, r_A>)]
+
+rule Bob_receives_sends1:
+let
+K_R11=break1(K_R1)
+K_R12=break2(K_R1)
+m_1=<A_ID,N_1>
+m_B=senc{B, C_2, ~N_B, N_1}K_R11
+in
+[B1(B, A, <K_R1, A_ID, C_2, R_2, r_B>), In(m_1), Fr(~N_B)]
+--[SendB(B, m_B), B1_IN(N_1, m_1), B1_OUT(m_B),
+Genuine(A), Genuine(B), Role('B'), Involved(B, A, <'init'>)]->
+[Out(<m_B, mac(K_R12,m_B)>), B2(B, A, <~N_B, C_2, R_2, K_R11, r_B>)]
+
+rule Alice_receives_sends2:
+let
+m_B=senc{B, C_2, N_B, N_1}K_R11
+hd_2e=fuzzyhd(puf(C_2))
+KR_2e=fuzzyk(puf(C_2))
+R_3=puf(h(<C_2,~N_A>))
+R_4=puf(h(<h(<C_2,~N_A>),N_B>))
+KR_21e=break1(KR_2e)
+KR_22e=break2(KR_2e)
+A_ID_new=h(<A, N_B, R_3>)
+m_A=senc{A, ~s_A, ~N_A, R_3, R_4}KR_21e
+sess_key=h(r_A)
+in
+[A2(A, B, <N_1, K_R11, K_R12, r_A>), In(<m_B,sig>), Fr(~N_A), Fr(~s_A), Fr(~Random_variable)]
+--[ReceiveA(A,m_B), 
+A1_IN(N_B,m_B), SendA(A, m_A), A2_OUT(m_A),
+Secret(sess_key), Genuine(A), Genuine(B), Commit(A, B, <'init'>),
+Role('A'), Involved(A, B, <'resp'>), Eq(vermac(K_R12,m_B,sig),true),
+AuthenticB(B, m_B)]->
+[Out(<m_A, mac(KR_22e, m_A), hd_2e>),  A3(A, sess_key)]
+// To prove anonymity and untraceability properties add the following in the conclusion of rule Alice_receives_sends2: Out(diff(A_ID_new, ~Random_variable))
+
+rule Bob_receives2:
+let
+KR_2e=rep(R_2, hd_2e)
+KR_21e=break1(KR_2e)
+KR_22e=break2(KR_2e)
+A_ID_new=h(<A, N_B, R_3>)
+m_A=senc{A,s_A,N_A, R_3, R_4}KR_21e
+r_A=SKG(s_A, r_B)
+sess_key=h(r_A)
+in
+[B2(B, A, <N_B, C_2, R_2, K_R11, r_B>),  In(<m_A, sigm_A, hd_2e>)] 
+--[B2_IN(N_A, m_A), ReceiveB(B,m_A), Secret(sess_key), Genuine(B),
+Genuine(A), Role('B'), Eq(vermac(KR_22e,m_A,sigm_A),true), 
+Commit(B, A, <'resp'>), AuthenticA(A, m_A)]->
+[B3(B, sess_key)]
+
+
+restriction Equality:
+	"All x y #i. Eq(x,y) @i ==> x = y"
+
+restriction Enrollment_is_performed_once:
+	"All #i #j. Once( ) @ i & Once(  ) @ j ==> #i = #j"
+
+restriction Enrollment_is_secure:
+	"not(Ex m #i #j. Secure(m) @ #i & K(m) @ #j)"
+
+lemma aliveness:
+	"All a b t #i.
+	Commit(a,b,t)@i 
+	==>	  (Ex id #j. Initialise(b,id) @ j)
+	| (Ex C #r1. CompromiseA(C) @ r1 & Genuine(C) @ i)"
+
+lemma weak_agreement:
+  "All a b t1 #i. 
+    Commit(a,b,t1) @i// & Role('S') @i
+    ==> (Ex t2 #j. Involved(b,a,t2) @j)// & Role('S')@j )
+        | (Ex C #r. CompromiseB(C) @ r & Genuine(C) @ i)
+        | (Ex C #r1. CompromiseA(C) @ r1 & Genuine(C) @ i)"
+
+lemma noninjective_agreement:
+  "All a b t #i. 
+    Commit(a,b,t) @i
+    ==> (Ex #j. Involved(b,a,t) @j)
+        | (Ex C #r. CompromiseB(C) @ r & Genuine(C) @ i)
+        | (Ex C #r. CompromiseA(C) @ r & Genuine(C) @ i)"
+
+lemma injective_agreement:
+  "All A B t #i. 
+    Commit(A,B,t) @i
+    ==> (Ex #j. Involved(B,A,t) @j 
+        & j < i
+        & not (Ex A2 B2 #i2. Commit(A2,B2,t) @i2
+                           & not (#i2 = #i)))
+              | (Ex C #r. CompromiseB(C)@r & Genuine(C) @i)
+              | (Ex C #r. CompromiseA(C)@r & Genuine(C) @i)"
+
+lemma message_authentication_m_S:
+	"All b m #i.
+	AuthenticB(b,m) @i
+	==> (Ex #j. SendB(b,m) @j & j<i)
+	| (Ex B #r. CompromiseA(B)@r & Genuine(B) @i & r < i)
+	| (Ex B #r. CompromiseB(B)@r & Genuine(B) @i & r < i)"
+
+lemma message_authentication_m_A:
+	"All b m #i.
+	AuthenticA(b,m) @i
+	==> (Ex #j. SendA(b,m) @j & j<i)
+	| (Ex B #r. CompromiseB(B)@r & Genuine(B) @i & r < i)"
+
+lemma PFS_session_key_Alice:
+	"All x #i.
+	Secret(x) @i & Role('A') @i==> 
+	(not(Ex #j. K(x)@j)) "
+
+lemma PFS_session_key_Bob:
+	"All x #i.
+	Secret(x) @i & Role('B') @i==> 
+	(not(Ex #j. K(x)@j)) "
+
+lemma types [sources]:
+"(All N_1 m_1 #i.
+	B1_IN(N_1, m_1) @ i
+	==>
+	( (Ex #j. KU(N_1) @ j & j < i)
+	| (Ex #j. A1_OUT(m_1) @ j)
+	)
+	)
+ & (All N_S m_S #i.
+	A1_IN(N_S, m_S) @ i
+	==>
+	( (Ex #j. KU(N_S) @ j & j < i)
+	| (Ex #j. B1_OUT(m_S) @ j)
+	)
+	)
+& (All N_A m_A #i.
+	B2_IN(N_A, m_A) @ i
+	==>
+	( (Ex #j. KU(N_A) @ j & j < i)
+	| (Ex #j. A2_OUT(m_A) @ j)
+	)
+	)"
+
+lemma executable: exists-trace
+"Ex A B m #i #j.
+    SendA(A,m) @i & ReceiveB(B,m) @j & i < j"
+
+end
