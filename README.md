@@ -3,4 +3,4 @@ The code verifies multiple security properties of the authentication protocol pr
 
 Miroslav Mitev, Mahdi Shekiba-Herfeh, Arsenia Chorti, Martin Reed, "Multi-factor Physical Layer Security Authentication in Short Blocklength Communication" (https://arxiv.org/abs/2010.14457)
 
-![alt text](< Miroslav-Mitev/Tamarin-prover-PUF-Authentication-protocol/images/image.jpg>)
+![alt text](< Tamarin-prover-PUF-Authentication-protocol/images/PropertyVerification.jpg>)
