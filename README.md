@@ -1,2 +1,5 @@
 # Tamarin-prover-PUF-Authentication-protocol
-Verification of multiple security properties of PUF authentication protocol 
+The code verifies multiple security properties of the authentication protocol proposed in:
+Miroslav Mitev, Mahdi Shekiba-Herfeh, Arsenia Chorti, Martin Reed, "Multi-factor Physical Layer Security Authentication in Short Blocklength Communication" (https://arxiv.org/abs/2010.14457)
+
+![alt text](< Miroslav-Mitev/Tamarin-prover-PUF-Authentication-protocol/images/image.jpg>)
